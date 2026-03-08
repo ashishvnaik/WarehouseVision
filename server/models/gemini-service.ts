@@ -1,14 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import type { AnalysisResponse } from './config';
 
-// This is using Replit's AI Integrations service, which provides Gemini-compatible API access without requiring your own Gemini API key.
-// Charges are billed to your Replit credits.
 const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY,
+  ...(process.env.AI_INTEGRATIONS_GEMINI_BASE_URL
+    ? { httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL } }
+    : {}),
 });
 
 export interface UserInstruction {
