@@ -4,6 +4,23 @@ import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
 
+// HTTP Basic Auth — enabled when BASIC_AUTH_USER and BASIC_AUTH_PASSWORD are set
+const basicAuthUser = process.env.BASIC_AUTH_USER;
+const basicAuthPassword = process.env.BASIC_AUTH_PASSWORD;
+if (basicAuthUser && basicAuthPassword) {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader?.startsWith("Basic ")) {
+      const [user, pass] = Buffer.from(authHeader.slice(6), "base64").toString().split(":");
+      if (user === basicAuthUser && pass === basicAuthPassword) {
+        return next();
+      }
+    }
+    res.setHeader("WWW-Authenticate", 'Basic realm="WarehouseVision"');
+    res.status(401).send("Unauthorized");
+  });
+}
+
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
