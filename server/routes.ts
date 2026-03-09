@@ -12,6 +12,11 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Lightweight health check for Railway (no DB dependency)
+  app.get("/api/health", (_req, res) => {
+    res.json({ status: "ok" });
+  });
+
   // Inventory items routes
   app.get("/api/inventory", async (req, res) => {
     try {
