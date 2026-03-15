@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
@@ -6,10 +6,26 @@ import { modelService, AVAILABLE_MODELS, type UserInstruction } from "./models";
 import { insertInventoryItemSchema, insertAlertSchema, insertPromptSchema, insertTrainingExampleSchema } from "@shared/schema";
 import { createHash } from "crypto";
 
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
+
+type Role = "operator" | "supervisor" | "programmer" | "superuser";
+
+function requireAuth(allowedRoles: Role[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const role = req.session?.role as Role | undefined;
+    if (!role) return res.status(401).json({ error: "Authentication required" });
+    if (!allowedRoles.includes(role)) return res.status(403).json({ error: "Forbidden" });
+    next();
+  };
+}
+
+const requireAnyRole        = requireAuth(["operator", "supervisor", "programmer", "superuser"]);
+const requireSupervisorPlus = requireAuth(["supervisor", "superuser"]);
+const requireProgrammerPlus = requireAuth(["programmer", "superuser"]);
+const requireSuperUser      = requireAuth(["superuser"]);
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Lightweight health check for Railway (no DB dependency)
@@ -17,8 +33,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ status: "ok" });
   });
 
-  // Inventory items routes
-  app.get("/api/inventory", async (req, res) => {
+  // ─── Auth Routes ───────────────────────────────────────────────────────────
+
+  app.post("/api/auth/login", (req, res) => {
+    const { role, password } = req.body as { role?: string; password?: string };
+    const validRoles: Role[] = ["operator", "supervisor", "programmer", "superuser"];
+    if (!role || !validRoles.includes(role as Role)) {
+      return res.status(400).json({ error: "Invalid role" });
+    }
+    const envKey = `ROLE_${role.toUpperCase()}_PASSWORD`;
+    const expected = process.env[envKey];
+    if (!expected) {
+      return res.status(500).json({ error: "Role not configured" });
+    }
+    if (password !== expected) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+    req.session.role = role as Role;
+    req.session.testingMode = false;
+    res.json({ role, testingMode: false });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy(() => {});
+    res.json({ success: true });
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    const role = req.session?.role;
+    if (!role) return res.status(401).json({ error: "Not authenticated" });
+    res.json({ role, testingMode: req.session.testingMode ?? false });
+  });
+
+  app.post("/api/auth/testing-mode", requireAuth(["programmer"]), (req, res) => {
+    const { enabled } = req.body as { enabled?: boolean };
+    req.session.testingMode = !!enabled;
+    res.json({ testingMode: req.session.testingMode });
+  });
+
+  // ─── Inventory Routes ─────────────────────────────────────────────────────
+
+  app.get("/api/inventory", requireSupervisorPlus, async (req, res) => {
     try {
       // Exclude images by default for faster loading (88MB+ of image data)
       const includeImages = req.query.includeImages === 'true';
@@ -30,7 +85,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/inventory/:id", async (req, res) => {
+  app.get("/api/inventory/:id", requireSupervisorPlus, async (req, res) => {
     try {
       const item = await storage.getInventoryItem(req.params.id);
       if (!item) {
@@ -43,7 +98,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/inventory", async (req, res) => {
+  app.post("/api/inventory", requireSupervisorPlus, async (req, res) => {
     try {
       const validatedData = insertInventoryItemSchema.parse(req.body);
       const item = await storage.createInventoryItem(validatedData);
@@ -54,7 +109,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/inventory/:id", async (req, res) => {
+  app.patch("/api/inventory/:id", requireSupervisorPlus, async (req, res) => {
     try {
       const item = await storage.updateInventoryItem(req.params.id, req.body);
       if (!item) {
@@ -67,7 +122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/inventory/:id", async (req, res) => {
+  app.delete("/api/inventory/:id", requireSupervisorPlus, async (req, res) => {
     try {
       const deleted = await storage.deleteInventoryItem(req.params.id);
       if (!deleted) {
@@ -80,7 +135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/inventory/clear", async (req, res) => {
+  app.post("/api/inventory/clear", requireSuperUser, async (req, res) => {
     try {
       await storage.clearInventory();
       res.json({ success: true, message: "Inventory cleared successfully" });
@@ -90,7 +145,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/inventory-with-history", async (req, res) => {
+  app.get("/api/inventory-with-history", requireSupervisorPlus, async (req, res) => {
     try {
       const itemsWithHistory = await storage.getInventoryItemsWithHistory();
       res.json(itemsWithHistory);
@@ -100,7 +155,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/inventory/:itemId/counts/:photoDate", async (req, res) => {
+  app.delete("/api/inventory/:itemId/counts/:photoDate", requireSupervisorPlus, async (req, res) => {
     try {
       const { itemId, photoDate } = req.params;
       const deleted = await storage.deleteItemCountByDate(itemId, photoDate);
@@ -114,7 +169,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/inventory/:itemId/counts", async (req, res) => {
+  app.get("/api/inventory/:itemId/counts", requireSupervisorPlus, async (req, res) => {
     try {
       const history = await storage.getItemCountHistory(req.params.itemId);
       res.json(history);
@@ -124,9 +179,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Analysis routes
+  // ─── Supervisor Feature Routes ────────────────────────────────────────────
+
+  app.post("/api/inventory/merge", requireSupervisorPlus, async (req, res) => {
+    try {
+      const { sourceId, targetId, canonicalName, conflictResolution = "max" } = req.body as {
+        sourceId?: string; targetId?: string; canonicalName?: string;
+        conflictResolution?: "source" | "target" | "max";
+      };
+      if (!sourceId || !targetId || !canonicalName) {
+        return res.status(400).json({ error: "sourceId, targetId, and canonicalName are required" });
+      }
+      if (sourceId === targetId) {
+        return res.status(400).json({ error: "sourceId and targetId must be different" });
+      }
+      const [src, tgt] = await Promise.all([
+        storage.getInventoryItem(sourceId),
+        storage.getInventoryItem(targetId),
+      ]);
+      if (!src) return res.status(404).json({ error: "Source item not found" });
+      if (!tgt) return res.status(404).json({ error: "Target item not found" });
+      const merged = await storage.mergeInventoryItems(sourceId, targetId, canonicalName, conflictResolution);
+      res.json(merged);
+    } catch (error) {
+      console.error("Error merging inventory items:", error);
+      res.status(500).json({ error: "Failed to merge items" });
+    }
+  });
+
+  app.post("/api/inventory/:itemId/counts/:photoDate/verify", requireSupervisorPlus, async (req, res) => {
+    try {
+      const { itemId, photoDate } = req.params;
+      const updated = await storage.verifyItemCount(itemId, photoDate);
+      if (!updated) return res.status(404).json({ error: "Count entry not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error verifying count:", error);
+      res.status(500).json({ error: "Failed to verify count" });
+    }
+  });
+
+  // ─── Analysis Routes ───────────────────────────────────────────────────────
+
   // Lightweight summary endpoint (excludes large base64 images to prevent memory issues)
-  app.get("/api/analysis/summary", async (req, res) => {
+  app.get("/api/analysis/summary", requireProgrammerPlus, async (req, res) => {
     try {
       const itemId = req.query.itemId as string | undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
@@ -139,7 +235,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Full analysis results (includes images - use sparingly)
-  app.get("/api/analysis", async (req, res) => {
+  app.get("/api/analysis", requireProgrammerPlus, async (req, res) => {
     try {
       const itemId = req.query.itemId as string | undefined;
       const results = await storage.getAnalysisResults(itemId);
@@ -150,7 +246,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/analysis/:id", async (req, res) => {
+  app.delete("/api/analysis/:id", requireAuth(["operator", "supervisor", "superuser"]), async (req, res) => {
+    try {
+      const deleted = await storage.deleteAnalysisResult(req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Analysis result not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting analysis result:", error);
+      res.status(500).json({ error: "Failed to delete analysis result" });
+    }
+  });
+
+  app.get("/api/analysis/:id", requireAnyRole, async (req, res) => {
     try {
       const result = await storage.getAnalysisResultById(req.params.id);
       if (!result) {
@@ -163,7 +270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/analyze", upload.single("image"), async (req, res) => {
+  app.post("/api/analyze", requireAnyRole, upload.single("image"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No image provided" });
@@ -447,6 +554,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return bestMatch;
       };
       
+      const isTestingMode = req.session?.role === "programmer" && req.session?.testingMode === true;
+
       for (const detectedItem of analysisResult.detectedItems) {
         // Skip low-confidence detections entirely, regardless of whether item exists
         if (detectedItem.confidence < CONFIDENCE_THRESHOLD) {
@@ -462,38 +571,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const inventoryItems = await storage.getInventoryItems();
         let matchingItem = findBestMatch(detectedItem.itemType, inventoryItems);
 
-        // If no matching item exists, create a new inventory item with cleaned name
-        if (!matchingItem) {
-          // Use cleaned name (AI's original with packaging details removed)
-          const cleanedName = cleanItemName(detectedItem.itemType);
-          const newItem = await storage.createInventoryItem({
-            name: cleanedName,
-            sku: `AUTO-${Date.now()}-${Math.random().toString(36).substring(7).toUpperCase()}`,
-            category: 'Auto-detected',
-            location: detectedItem.location || 'Unknown',
-            currentCount: detectedItem.count,
-            minThreshold: 10,
-            imageUrl: fullImageDataUrl,
-          });
-          matchingItem = newItem;
-          createdItems.push(newItem);
-        } else if (!matchingItem.imageUrl) {
-          // Update existing item with image if it doesn't have one
-          await storage.updateInventoryItem(matchingItem.id, {
-            imageUrl: fullImageDataUrl,
-          });
-          matchingItem.imageUrl = fullImageDataUrl;
+        if (!isTestingMode) {
+          // If no matching item exists, create a new inventory item with cleaned name
+          if (!matchingItem) {
+            // Use cleaned name (AI's original with packaging details removed)
+            const cleanedName = cleanItemName(detectedItem.itemType);
+            const newItem = await storage.createInventoryItem({
+              name: cleanedName,
+              sku: `AUTO-${Date.now()}-${Math.random().toString(36).substring(7).toUpperCase()}`,
+              category: 'Auto-detected',
+              location: detectedItem.location || 'Unknown',
+              currentCount: detectedItem.count,
+              minThreshold: 10,
+              imageUrl: fullImageDataUrl,
+            });
+            matchingItem = newItem;
+            createdItems.push(newItem);
+          } else if (!matchingItem.imageUrl) {
+            // Update existing item with image if it doesn't have one
+            await storage.updateInventoryItem(matchingItem.id, {
+              imageUrl: fullImageDataUrl,
+            });
+            matchingItem.imageUrl = fullImageDataUrl;
+          }
         }
+
+        // In testing mode use a dummy item id if no match; otherwise use the matched item
+        const itemId = matchingItem?.id ?? `test-${Date.now()}`;
 
         // Create analysis result for this high-confidence detection
         const result = await storage.createAnalysisResult({
-          itemId: matchingItem.id,
+          itemId,
           imageUrl: fullImageDataUrl,
           imageHash,
           detectedCount: detectedItem.count,
           confidence: detectedItem.confidence,
           modelType: analysisResult.modelType,
           modelName: analysisResult.modelName,
+          isTest: isTestingMode ? 1 : 0,
           annotations: JSON.stringify({
             location: detectedItem.location,
             description: analysisResult.imageDescription,
@@ -502,8 +617,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         results.push(result);
 
-        // Save count to inventory_item_counts if photoDate is provided
-        if (photoDate) {
+        // Save count to inventory_item_counts if photoDate is provided and NOT in testing mode
+        if (photoDate && !isTestingMode && matchingItem) {
           await storage.upsertItemCount({
             itemId: matchingItem.id,
             photoDate: photoDate,
@@ -511,6 +626,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sourceAnalysisId: result.id
           });
         }
+      }
+
+      if (isTestingMode) {
+        return res.json({
+          success: true,
+          testMode: true,
+          cached: false,
+          analysisResult,
+          savedResults: results,
+          createdItems: 0,
+          newItems: [],
+          skippedItems: skippedItems.length > 0 ? skippedItems : undefined,
+          uploadedImageUrl: fullImageDataUrl,
+          message: "Testing mode active — results not saved to inventory."
+        });
       }
 
       res.json({
@@ -529,8 +659,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Alerts routes
-  app.get("/api/alerts", async (req, res) => {
+  // ─── Alerts Routes ────────────────────────────────────────────────────────
+
+  app.get("/api/alerts", requireSupervisorPlus, async (req, res) => {
     try {
       const dismissed = req.query.dismissed === 'true' ? true : 
                        req.query.dismissed === 'false' ? false : 
@@ -556,7 +687,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/alerts/:id/dismiss", async (req, res) => {
+  app.post("/api/alerts/:id/dismiss", requireSupervisorPlus, async (req, res) => {
     try {
       const dismissed = await storage.dismissAlert(req.params.id);
       if (!dismissed) {
@@ -569,7 +700,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/alerts/dismiss-all", async (req, res) => {
+  app.post("/api/alerts/dismiss-all", requireSupervisorPlus, async (req, res) => {
     try {
       const count = await storage.dismissAllAlerts();
       res.json({ success: true, count });
@@ -579,8 +710,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Prompt management routes
-  app.get("/api/prompts", async (req, res) => {
+  // ─── Prompt Routes ────────────────────────────────────────────────────────
+
+  app.get("/api/prompts", requireProgrammerPlus, async (req, res) => {
     try {
       const prompts = await storage.getPrompts();
       res.json(prompts);
@@ -590,7 +722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/prompts/default", async (req, res) => {
+  app.get("/api/prompts/default", requireAnyRole, async (req, res) => {
     try {
       const prompt = await storage.getDefaultPrompt();
       if (!prompt) {
@@ -603,7 +735,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/prompts/:id", async (req, res) => {
+  app.get("/api/prompts/:id", requireProgrammerPlus, async (req, res) => {
     try {
       const prompt = await storage.getPrompt(req.params.id);
       if (!prompt) {
@@ -616,7 +748,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/prompts", async (req, res) => {
+  app.post("/api/prompts", requireProgrammerPlus, async (req, res) => {
     try {
       const validatedData = insertPromptSchema.parse(req.body);
       const prompt = await storage.createPrompt(validatedData);
@@ -627,7 +759,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/prompts/:id", async (req, res) => {
+  app.patch("/api/prompts/:id", requireProgrammerPlus, async (req, res) => {
     try {
       const prompt = await storage.updatePrompt(req.params.id, req.body);
       if (!prompt) {
@@ -640,7 +772,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/prompts/:id", async (req, res) => {
+  app.delete("/api/prompts/:id", requireProgrammerPlus, async (req, res) => {
     try {
       const deleted = await storage.deletePrompt(req.params.id);
       if (!deleted) {
@@ -653,7 +785,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/prompts/:id/set-default", async (req, res) => {
+  app.post("/api/prompts/:id/set-default", requireProgrammerPlus, async (req, res) => {
     try {
       const success = await storage.setDefaultPrompt(req.params.id);
       if (!success) {
@@ -666,8 +798,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Settings routes
-  app.get("/api/settings", async (req, res) => {
+  // ─── Settings Routes ──────────────────────────────────────────────────────
+
+  app.get("/api/settings", requireSuperUser, async (req, res) => {
     try {
       const settings = await storage.getAllSettings();
       
@@ -687,7 +820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/settings/:key", async (req, res) => {
+  app.get("/api/settings/:key", requireSuperUser, async (req, res) => {
     try {
       const setting = await storage.getSetting(req.params.key);
       if (!setting) {
@@ -700,7 +833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/settings", async (req, res) => {
+  app.post("/api/settings", requireSuperUser, async (req, res) => {
     try {
       const { key, value } = req.body;
       if (!key || value === undefined) {
@@ -728,8 +861,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Models route
-  app.get("/api/models", async (req, res) => {
+  // ─── Models Route ─────────────────────────────────────────────────────────
+
+  app.get("/api/models", requireAnyRole, async (req, res) => {
     try {
       res.json(AVAILABLE_MODELS);
     } catch (error) {
@@ -738,8 +872,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Statistics route
-  app.get("/api/stats", async (req, res) => {
+  // ─── Stats Route ──────────────────────────────────────────────────────────
+
+  app.get("/api/stats", requireSupervisorPlus, async (req, res) => {
     try {
       const items = await storage.getInventoryItems();
       const alerts = await storage.getAlerts(false);
@@ -763,8 +898,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Training Examples routes (for few-shot learning)
-  app.get("/api/training-examples", async (req, res) => {
+  // ─── Training Examples Routes ─────────────────────────────────────────────
+
+  app.get("/api/training-examples", requireProgrammerPlus, async (req, res) => {
     try {
       const activeOnly = req.query.activeOnly === 'true';
       const examples = await storage.getTrainingExamples(activeOnly);
@@ -775,7 +911,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/training-examples/:id", async (req, res) => {
+  app.get("/api/training-examples/:id", requireProgrammerPlus, async (req, res) => {
     try {
       const example = await storage.getTrainingExample(req.params.id);
       if (!example) {
@@ -788,7 +924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/training-examples", upload.single("image"), async (req, res) => {
+  app.post("/api/training-examples", requireProgrammerPlus, upload.single("image"), async (req, res) => {
     try {
       let imageUrl: string;
       
@@ -850,7 +986,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/training-examples/:id", async (req, res) => {
+  app.patch("/api/training-examples/:id", requireProgrammerPlus, async (req, res) => {
     try {
       const updateData: Partial<{ title: string; description: string | null; detectedItems: string; isActive: number }> = {};
       
@@ -907,7 +1043,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/training-examples/:id", async (req, res) => {
+  app.delete("/api/training-examples/:id", requireProgrammerPlus, async (req, res) => {
     try {
       const deleted = await storage.deleteTrainingExample(req.params.id);
       if (!deleted) {
@@ -917,6 +1053,79 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting training example:", error);
       res.status(500).json({ error: "Failed to delete training example" });
+    }
+  });
+
+  // ─── Evaluate Route (Programmer only — never saves to inventory) ───────────
+
+  app.post("/api/evaluate", requireProgrammerPlus, upload.single("image"), async (req, res) => {
+    try {
+      let imageDataUrl: string;
+      let mimeType: string = "image/jpeg";
+
+      if (req.file) {
+        const validMimeTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/gif"];
+        if (!validMimeTypes.includes(req.file.mimetype)) {
+          return res.status(400).json({ error: "Invalid file type" });
+        }
+        mimeType = req.file.mimetype;
+        imageDataUrl = `data:${mimeType};base64,${req.file.buffer.toString("base64")}`;
+      } else if (req.body.analysisId) {
+        const existing = await storage.getAnalysisResultById(req.body.analysisId);
+        if (!existing) return res.status(404).json({ error: "Analysis result not found" });
+        imageDataUrl = existing.imageUrl;
+      } else {
+        return res.status(400).json({ error: "Provide an image file or analysisId" });
+      }
+
+      const promptId = req.body.promptId;
+      const modelId = req.body.modelId;
+      let customPrompt: string | undefined;
+      if (promptId) {
+        const prompt = await storage.getPrompt(promptId);
+        if (prompt) customPrompt = prompt.content;
+      } else {
+        const defaultPrompt = await storage.getDefaultPrompt();
+        if (defaultPrompt) customPrompt = defaultPrompt.content;
+      }
+
+      let selectedModel = modelId;
+      if (!selectedModel) {
+        const modelSetting = await storage.getSetting("defaultModel");
+        selectedModel = modelSetting?.value || "gpt-4o";
+      }
+
+      const analysisResult = await modelService.analyzeImage(
+        imageDataUrl, selectedModel, customPrompt, [], mimeType
+      );
+
+      const imageHash = createHash("sha256").update(
+        req.file ? req.file.buffer : Buffer.from(imageDataUrl)
+      ).digest("hex");
+
+      // Save with isTest=1, using a placeholder itemId
+      const placeholderItemId = `eval-${Date.now()}`;
+      const saved = await storage.createAnalysisResult({
+        itemId: placeholderItemId,
+        imageUrl: imageDataUrl,
+        imageHash,
+        detectedCount: analysisResult.totalItems,
+        confidence: analysisResult.detectedItems[0]?.confidence ?? 0,
+        modelType: analysisResult.modelType,
+        modelName: analysisResult.modelName,
+        isTest: 1,
+        annotations: JSON.stringify({ description: analysisResult.imageDescription }),
+      });
+
+      res.json({
+        success: true,
+        analysisResult,
+        analysisResultId: saved.id,
+        uploadedImageUrl: imageDataUrl,
+      });
+    } catch (error) {
+      console.error("Error in evaluate:", error);
+      res.status(500).json({ error: "Evaluation failed" });
     }
   });
 

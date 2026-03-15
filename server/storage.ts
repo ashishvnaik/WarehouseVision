@@ -74,6 +74,10 @@ export interface IStorage {
   createTrainingExample(example: InsertTrainingExample): Promise<TrainingExample>;
   updateTrainingExample(id: string, updates: Partial<InsertTrainingExample>): Promise<TrainingExample | undefined>;
   deleteTrainingExample(id: string): Promise<boolean>;
+
+  deleteAnalysisResult(id: string): Promise<boolean>;
+  mergeInventoryItems(sourceId: string, targetId: string, canonicalName: string, conflictResolution: 'source' | 'target' | 'max'): Promise<InventoryItem>;
+  verifyItemCount(itemId: string, photoDate: string): Promise<InventoryItemCount | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -269,6 +273,7 @@ Be thorough, specific, and accurate. Read all visible text and branding.`,
       timestamp: analysisResults.timestamp,
       modelType: analysisResults.modelType,
       modelName: analysisResults.modelName,
+      isTest: analysisResults.isTest,
     }).from(analysisResults);
 
     if (itemId) {
@@ -542,6 +547,80 @@ Be thorough, specific, and accurate. Read all visible text and branding.`,
   async deleteTrainingExample(id: string): Promise<boolean> {
     const result = await db.delete(trainingExamples).where(eq(trainingExamples.id, id));
     return result.rowCount !== null && result.rowCount > 0;
+  }
+
+  async deleteAnalysisResult(id: string): Promise<boolean> {
+    const [result] = await db.select().from(analysisResults).where(eq(analysisResults.id, id));
+    if (!result) return false;
+    const itemId = result.itemId;
+    // Delete linked count row
+    await db.delete(inventoryItemCounts).where(eq(inventoryItemCounts.sourceAnalysisId, id));
+    // Delete analysis result
+    await db.delete(analysisResults).where(eq(analysisResults.id, id));
+    // Recalculate current count
+    await this.updateCurrentCountFromHistory(itemId);
+    return true;
+  }
+
+  async mergeInventoryItems(
+    sourceId: string,
+    targetId: string,
+    canonicalName: string,
+    conflictResolution: 'source' | 'target' | 'max'
+  ): Promise<InventoryItem> {
+    const sourceCounts = await this.getItemCountHistory(sourceId);
+    for (const sourceCount of sourceCounts) {
+      const [existingTarget] = await db
+        .select()
+        .from(inventoryItemCounts)
+        .where(and(eq(inventoryItemCounts.itemId, targetId), eq(inventoryItemCounts.photoDate, sourceCount.photoDate)));
+      if (existingTarget) {
+        let keepCount: number;
+        if (conflictResolution === 'source') keepCount = sourceCount.absoluteCount;
+        else if (conflictResolution === 'target') keepCount = existingTarget.absoluteCount;
+        else keepCount = Math.max(sourceCount.absoluteCount, existingTarget.absoluteCount);
+        await db
+          .update(inventoryItemCounts)
+          .set({ absoluteCount: keepCount })
+          .where(eq(inventoryItemCounts.id, existingTarget.id));
+        await db.delete(inventoryItemCounts).where(eq(inventoryItemCounts.id, sourceCount.id));
+      } else {
+        await db
+          .update(inventoryItemCounts)
+          .set({ itemId: targetId })
+          .where(eq(inventoryItemCounts.id, sourceCount.id));
+      }
+    }
+    // Reassign analysis results
+    await db
+      .update(analysisResults)
+      .set({ itemId: targetId })
+      .where(eq(analysisResults.itemId, sourceId));
+    // Rename target
+    await db
+      .update(inventoryItems)
+      .set({ name: canonicalName })
+      .where(eq(inventoryItems.id, targetId));
+    // Delete source item
+    await db.delete(inventoryItems).where(eq(inventoryItems.id, sourceId));
+    // Recalculate currentCount
+    await this.updateCurrentCountFromHistory(targetId);
+    const [updated] = await db.select().from(inventoryItems).where(eq(inventoryItems.id, targetId));
+    return updated;
+  }
+
+  async verifyItemCount(itemId: string, photoDate: string): Promise<InventoryItemCount | undefined> {
+    const [existing] = await db
+      .select()
+      .from(inventoryItemCounts)
+      .where(and(eq(inventoryItemCounts.itemId, itemId), eq(inventoryItemCounts.photoDate, photoDate)));
+    if (!existing) return undefined;
+    const [updated] = await db
+      .update(inventoryItemCounts)
+      .set({ verifiedAt: new Date() })
+      .where(eq(inventoryItemCounts.id, existing.id))
+      .returning();
+    return updated;
   }
 }
 

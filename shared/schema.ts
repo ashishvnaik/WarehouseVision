@@ -33,6 +33,7 @@ export const analysisResults = pgTable("analysis_results", {
   modelName: text("model_name").notNull().default("gpt-4o"),
   timestamp: timestamp("timestamp").notNull().defaultNow(),
   annotations: text("annotations"),
+  isTest: integer("is_test").notNull().default(0),
 });
 
 export const alerts = pgTable("alerts", {
@@ -77,6 +78,7 @@ export const inventoryItemCounts = pgTable("inventory_item_counts", {
   photoDate: date("photo_date").notNull(),
   absoluteCount: integer("absolute_count").notNull(),
   sourceAnalysisId: varchar("source_analysis_id"),
+  verifiedAt: timestamp("verified_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   uniqueItemDate: unique().on(table.itemId, table.photoDate),

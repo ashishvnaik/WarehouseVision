@@ -1,8 +1,32 @@
 import express, { type Request, Response, NextFunction } from "express";
+import session from "express-session";
+import MemoryStore from "memorystore";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
+declare module "express-session" {
+  interface SessionData {
+    role: "operator" | "supervisor" | "programmer" | "superuser";
+    testingMode: boolean;
+  }
+}
+
 const app = express();
+
+// Session middleware
+const MemoryStoreSession = MemoryStore(session);
+app.use(session({
+  secret: process.env.SESSION_SECRET || "wv-dev-secret-change-in-production",
+  resave: false,
+  saveUninitialized: false,
+  store: new MemoryStoreSession({ checkPeriod: 86400000 }),
+  cookie: {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    sameSite: "strict",
+  },
+}));
 
 // HTTP Basic Auth — enabled when BASIC_AUTH_USER and BASIC_AUTH_PASSWORD are set
 const basicAuthUser = process.env.BASIC_AUTH_USER;

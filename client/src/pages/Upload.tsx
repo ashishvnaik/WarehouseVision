@@ -1,7 +1,7 @@
 import { UploadZone } from "@/components/UploadZone";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Play, CheckCircle, AlertCircle, Calendar } from "lucide-react";
+import { Play, CheckCircle, AlertCircle, Calendar, Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Progress } from "@/components/ui/progress";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -12,6 +12,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
+
+const SESSION_UPLOADS_KEY = "wv_session_uploads";
+
+function saveUploadToSession(entry: {
+  id: string;
+  fileName: string;
+  photoDate: string;
+  imageUrl: string | null;
+  detectedItems: { itemType: string; count: number; confidence: number }[];
+  analyzedAt: string;
+}) {
+  try {
+    const existing = JSON.parse(sessionStorage.getItem(SESSION_UPLOADS_KEY) || "[]");
+    existing.unshift(entry);
+    sessionStorage.setItem(SESSION_UPLOADS_KEY, JSON.stringify(existing));
+  } catch {
+    // ignore storage errors
+  }
+}
 
 interface Prompt {
   id: string;
@@ -44,6 +63,21 @@ export default function Upload() {
   const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [photoDate, setPhotoDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const { toast } = useToast();
+
+  const deleteAnalysisMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/analysis/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Delete failed');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/inventory'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/inventory-with-history'] });
+      toast({ title: "Upload deleted", description: "The analysis and its inventory count have been removed." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to delete upload.", variant: "destructive" });
+    },
+  });
 
   const { data: prompts = [] } = useQuery<Prompt[]>({
     queryKey: ['/api/prompts'],
@@ -139,6 +173,17 @@ export default function Upload() {
           photoDate || undefined
         );
         results.push({ ...result, fileName: selectedFiles[i].name, success: true });
+        // Save to session upload history
+        if (result.analysisResult?.id) {
+          saveUploadToSession({
+            id: result.analysisResult.id,
+            fileName: selectedFiles[i].name,
+            photoDate: photoDate || format(new Date(), 'yyyy-MM-dd'),
+            imageUrl: result.uploadedImageUrl || result.analysisResult.imageUrl || null,
+            detectedItems: result.analysisResult.detectedItems || [],
+            analyzedAt: new Date().toISOString(),
+          });
+        }
       } catch (error: any) {
         results.push({ 
           fileName: selectedFiles[i].name, 
@@ -413,10 +458,25 @@ export default function Upload() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {successResults.filter((r: any) => r.uploadedImageUrl).map((result: any, index: number) => (
                           <div key={index} className="space-y-2">
-                            <p className="text-xs text-muted-foreground truncate" title={result.fileName}>{result.fileName}</p>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-xs text-muted-foreground truncate" title={result.fileName}>{result.fileName}</p>
+                              {result.analysisResult?.id && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive"
+                                  onClick={() => deleteAnalysisMutation.mutate(result.analysisResult.id)}
+                                  disabled={deleteAnalysisMutation.isPending}
+                                  title="Delete this upload and its inventory count"
+                                  data-testid={`button-delete-analysis-${result.analysisResult.id}`}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
                             <div className="relative rounded-lg overflow-hidden border">
-                              <img 
-                                src={result.uploadedImageUrl} 
+                              <img
+                                src={result.uploadedImageUrl}
                                 alt={`Analyzed image - ${result.fileName}`}
                                 className="w-full h-auto"
                                 data-testid={`img-analyzed-${index}`}
