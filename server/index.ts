@@ -9,6 +9,7 @@ const basicAuthUser = process.env.BASIC_AUTH_USER;
 const basicAuthPassword = process.env.BASIC_AUTH_PASSWORD;
 if (basicAuthUser && basicAuthPassword) {
   app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path === "/api/health") return next();
     const authHeader = req.headers.authorization;
     if (authHeader?.startsWith("Basic ")) {
       const [user, pass] = Buffer.from(authHeader.slice(6), "base64").toString().split(":");
