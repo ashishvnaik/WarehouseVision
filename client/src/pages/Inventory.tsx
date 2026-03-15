@@ -1,12 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CountTooltip } from "@/components/CountTooltip";
+import type { InventoryItem } from "@shared/schema";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Package, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Edit, Image as ImageIcon, Info, CheckCircle, ShieldCheck, GitMerge } from "lucide-react";
+import { Plus, Search, Package, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Edit, Image as ImageIcon, CheckCircle, ShieldCheck, GitMerge } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -17,12 +18,8 @@ import { EditItemDialog } from "@/components/EditItemDialog";
 import { ImagePopupDialog } from "@/components/ImagePopupDialog";
 import { useAuth } from "@/contexts/AuthContext";
 
-interface CountWithMethod extends InventoryItemCount {
-  countingMethod?: string;
-}
-
 interface ItemWithHistory extends InventoryItem {
-  countHistory: CountWithMethod[];
+  countHistory: InventoryItemCount[];
 }
 
 export default function Inventory() {
@@ -169,7 +166,7 @@ export default function Inventory() {
   // Show only the 3 most recent dates
   const allDates = allDatesUnlimited.slice(-3);
 
-  const getCountEntryForDate = (item: ItemWithHistory, photoDate: string): CountWithMethod | null =>
+  const getCountEntryForDate = (item: ItemWithHistory, photoDate: string): InventoryItemCount | null =>
     item.countHistory.find(c => c.photoDate === photoDate) || null;
 
   const getCountForDate = (item: ItemWithHistory, photoDate: string): number | null => {
@@ -208,6 +205,12 @@ export default function Inventory() {
       : <ArrowDown className="ml-1 h-3 w-3 inline" />;
   }
 
+  function stockNameClass(item: InventoryItem): string {
+    if (item.currentCount === 0) return 'text-destructive';
+    if (item.currentCount < item.minThreshold) return 'text-amber-600 dark:text-amber-400';
+    return 'text-green-700 dark:text-green-500';
+  }
+
   const handleCountClick = (item: ItemWithHistory, photoDate: string) => {
     const countEntry = getCountEntryForDate(item, photoDate);
     if (countEntry) {
@@ -229,12 +232,6 @@ export default function Inventory() {
       if (prevCount !== null) return currentCount - prevCount;
     }
     return null;
-  };
-
-  const getStatusBadge = (currentCount: number, threshold: number) => {
-    if (currentCount === 0) return <Badge variant="destructive">Out of Stock</Badge>;
-    if (currentCount < threshold) return <Badge className="bg-chart-4 text-white hover:bg-chart-4/90">Low Stock</Badge>;
-    return <Badge className="bg-chart-5 text-white hover:bg-chart-5/90">In Stock</Badge>;
   };
 
   return (
@@ -317,7 +314,7 @@ export default function Inventory() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="sticky left-14 bg-background z-10 font-medium" data-testid={`text-item-name-${item.id}`}>
+                  <TableCell className={`sticky left-14 bg-background z-10 font-medium ${stockNameClass(item)}`} data-testid={`text-item-name-${item.id}`}>
                     {item.name}
                   </TableCell>
                   {allDates.map((date, dateIndex) => {
@@ -344,17 +341,8 @@ export default function Inventory() {
                                   <ImageIcon className="h-3 w-3 opacity-50" />
                                 )}
                               </button>
-                              {countEntry?.countingMethod && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button type="button" className="text-muted-foreground hover:text-foreground">
-                                      <Info className="h-3 w-3" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-xs">
-                                    <p className="text-sm font-normal">{countEntry.countingMethod}</p>
-                                  </TooltipContent>
-                                </Tooltip>
+                              {countEntry?.sourceAnalysisId && (
+                                <CountTooltip analysisId={countEntry.sourceAnalysisId} />
                               )}
                               {isVerified ? (
                                 <Tooltip>

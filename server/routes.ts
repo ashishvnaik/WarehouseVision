@@ -273,6 +273,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Lightweight text-only details for the count tooltip (no imageUrl)
+  app.get("/api/analysis/:id/details", requireAnyRole, async (req, res) => {
+    try {
+      const details = await storage.getAnalysisDetails(req.params.id);
+      if (!details) {
+        return res.status(404).json({ error: "Analysis not found" });
+      }
+      res.json(details);
+    } catch (error) {
+      console.error("Error fetching analysis details:", error);
+      res.status(500).json({ error: "Failed to fetch analysis details" });
+    }
+  });
+
   app.post("/api/analyze", upload.single("image"), async (req, res) => {
     try {
       if (!req.file) {

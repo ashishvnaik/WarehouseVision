@@ -1,23 +1,25 @@
 import { useState } from "react";
-import { Package, AlertTriangle, CalendarDays, ArrowUp, ArrowDown, ArrowUpDown, Image as ImageIcon, Info, ShieldCheck } from "lucide-react";
+import { Package, AlertTriangle, CalendarDays, ArrowUp, ArrowDown, ArrowUpDown, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { CountTooltip } from "@/components/CountTooltip";
 import type { InventoryItem, InventoryItemCount } from "@shared/schema";
 import { format, parseISO } from "date-fns";
 
-interface CountWithMethod extends InventoryItemCount {
-  countingMethod?: string;
-}
-
 interface ItemWithHistory extends InventoryItem {
-  countHistory: CountWithMethod[];
+  countHistory: InventoryItemCount[];
 }
 
 const MAX_DATES = 3;
 
 type SortDir = "asc" | "desc";
+
+function stockNameClass(item: InventoryItem): string {
+  if (item.currentCount === 0) return "text-destructive";
+  if (item.currentCount < item.minThreshold) return "text-amber-600 dark:text-amber-400";
+  return "text-green-700 dark:text-green-500";
+}
 
 export default function Dashboard() {
   const [sortColumn, setSortColumn] = useState<string>("name");
@@ -49,7 +51,7 @@ export default function Dashboard() {
     return e != null ? e.absoluteCount : null;
   };
 
-  const getEntry = (item: ItemWithHistory, date: string): CountWithMethod | null =>
+  const getEntry = (item: ItemWithHistory, date: string): InventoryItemCount | null =>
     item.countHistory.find((c) => c.photoDate === date) ?? null;
 
   const getDelta = (item: ItemWithHistory, date: string, dateIndex: number): number | null => {
@@ -155,7 +157,6 @@ export default function Dashboard() {
                 >
                   Item Name <SortIcon col="name" />
                 </TableHead>
-                <TableHead className="min-w-[100px]">Status</TableHead>
                 {recentDates.map((date) => (
                   <TableHead
                     key={date}
@@ -184,17 +185,8 @@ export default function Dashboard() {
                       </div>
                     )}
                   </TableCell>
-                  <TableCell className="sticky left-14 bg-background z-10 font-medium">
+                  <TableCell className={`sticky left-14 bg-background z-10 font-medium ${stockNameClass(item)}`}>
                     {item.name}
-                  </TableCell>
-                  <TableCell>
-                    {item.currentCount === 0 ? (
-                      <Badge variant="destructive">Out of Stock</Badge>
-                    ) : item.currentCount < item.minThreshold ? (
-                      <Badge className="bg-chart-4 text-white hover:bg-chart-4/90">Low Stock</Badge>
-                    ) : (
-                      <Badge className="bg-chart-5 text-white hover:bg-chart-5/90">In Stock</Badge>
-                    )}
                   </TableCell>
                   {recentDates.map((date, dateIndex) => {
                     const count = getCount(item, date);
@@ -212,17 +204,8 @@ export default function Dashboard() {
                                   <ImageIcon className="h-3 w-3 opacity-40" />
                                 )}
                               </span>
-                              {entry?.countingMethod && (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <span className="text-muted-foreground cursor-default">
-                                      <Info className="h-3 w-3" />
-                                    </span>
-                                  </TooltipTrigger>
-                                  <TooltipContent side="top" className="max-w-xs">
-                                    <p className="text-sm font-normal">{entry.countingMethod}</p>
-                                  </TooltipContent>
-                                </Tooltip>
+                              {entry?.sourceAnalysisId && (
+                                <CountTooltip analysisId={entry.sourceAnalysisId} />
                               )}
                               {entry?.verifiedAt && (
                                 <Tooltip>

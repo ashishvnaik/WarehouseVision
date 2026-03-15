@@ -67,7 +67,8 @@ export interface IStorage {
   getAllItemCountHistory(): Promise<InventoryItemCount[]>;
   upsertItemCount(count: InsertInventoryItemCount): Promise<InventoryItemCount>;
   deleteItemCountByDate(itemId: string, photoDate: string): Promise<boolean>;
-  getInventoryItemsWithHistory(): Promise<(InventoryItem & { countHistory: InventoryItemCount[], latestCountingMethod?: string })[]>;
+  getInventoryItemsWithHistory(): Promise<(InventoryItem & { countHistory: InventoryItemCount[] })[]>;
+  getAnalysisDetails(id: string): Promise<{ modelName: string; modelType: string; confidence: number; countingMethod: string | null; imageDescription: string | null } | undefined>;
   
   getTrainingExamples(activeOnly?: boolean): Promise<TrainingExample[]>;
   getTrainingExample(id: string): Promise<TrainingExample | undefined>;
@@ -293,6 +294,29 @@ Be thorough, specific, and accurate. Read all visible text and branding.`,
     return await db.select().from(analysisResults).where(eq(analysisResults.imageHash, imageHash));
   }
 
+  async getAnalysisDetails(id: string): Promise<{ modelName: string; modelType: string; confidence: number; countingMethod: string | null; imageDescription: string | null } | undefined> {
+    const [row] = await db
+      .select({
+        modelName: analysisResults.modelName,
+        modelType: analysisResults.modelType,
+        confidence: analysisResults.confidence,
+        annotations: analysisResults.annotations,
+      })
+      .from(analysisResults)
+      .where(eq(analysisResults.id, id));
+    if (!row) return undefined;
+    let countingMethod: string | null = null;
+    let imageDescription: string | null = null;
+    if (row.annotations) {
+      try {
+        const parsed = JSON.parse(row.annotations);
+        countingMethod = parsed.countingMethod ?? null;
+        imageDescription = parsed.description ?? null;
+      } catch { /* ignore */ }
+    }
+    return { modelName: row.modelName, modelType: row.modelType, confidence: row.confidence, countingMethod, imageDescription };
+  }
+
   async createAnalysisResult(insertResult: InsertAnalysisResult): Promise<AnalysisResult> {
     const [result] = await db.insert(analysisResults).values(insertResult).returning();
     
@@ -479,42 +503,14 @@ Be thorough, specific, and accurate. Read all visible text and branding.`,
     }
   }
 
-  async getInventoryItemsWithHistory(): Promise<(InventoryItem & { countHistory: (InventoryItemCount & { countingMethod?: string })[] })[]> {
+  async getInventoryItemsWithHistory(): Promise<(InventoryItem & { countHistory: InventoryItemCount[] })[]> {
     // Exclude images for faster loading - the history view doesn't need full base64 images
     const items = await this.getInventoryItems(true);
     const allCounts = await this.getAllItemCountHistory();
-    
-    // Get only id and annotations (excluding large imageUrl) to extract counting method per analysis
-    const allAnalysis = await db
-      .select({
-        id: analysisResults.id,
-        annotations: analysisResults.annotations
-      })
-      .from(analysisResults);
-    
-    // Build a map of analysisId -> countingMethod
-    const countingMethodMap = new Map<string, string>();
-    for (const analysis of allAnalysis) {
-      if (analysis.annotations) {
-        try {
-          const annotations = JSON.parse(analysis.annotations);
-          if (annotations.countingMethod) {
-            countingMethodMap.set(analysis.id, annotations.countingMethod);
-          }
-        } catch {
-          // Ignore parse errors
-        }
-      }
-    }
-    
+
     return items.map(item => ({
       ...item,
-      countHistory: allCounts
-        .filter(c => c.itemId === item.id)
-        .map(c => ({
-          ...c,
-          countingMethod: c.sourceAnalysisId ? countingMethodMap.get(c.sourceAnalysisId) : undefined
-        }))
+      countHistory: allCounts.filter(c => c.itemId === item.id)
     }));
   }
 
