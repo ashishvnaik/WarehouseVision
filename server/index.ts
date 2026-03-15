@@ -14,6 +14,10 @@ declare module "express-session" {
 
 const app = express();
 
+// Trust Railway's (and similar) reverse proxy so req.secure reflects HTTPS
+// and secure session cookies are actually set on the client.
+app.set('trust proxy', 1);
+
 // Session middleware — stored in PostgreSQL so sessions survive server restarts
 const PgSession = connectPgSimple(session);
 app.use(session({

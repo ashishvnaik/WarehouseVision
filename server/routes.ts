@@ -51,7 +51,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     req.session.role = role as Role;
     req.session.testingMode = false;
-    res.json({ role, testingMode: false });
+    req.session.save((err) => {
+      if (err) return res.status(500).json({ error: "Failed to save session" });
+      res.json({ role, testingMode: false });
+    });
   });
 
   app.post("/api/auth/logout", (req, res) => {

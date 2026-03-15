@@ -113,13 +113,13 @@ export default function Upload() {
         );
         results.push({ ...result, fileName: selectedFiles[i].name, success: true });
         // Save to session upload history
-        if (result.analysisResult?.id) {
+        if (result.success) {
           saveUploadToSession({
-            id: result.analysisResult.id,
+            id: result.savedResults?.[0]?.id ?? crypto.randomUUID(),
             fileName: selectedFiles[i].name,
             photoDate: photoDate || format(new Date(), 'yyyy-MM-dd'),
-            imageUrl: result.uploadedImageUrl || result.analysisResult.imageUrl || null,
-            detectedItems: result.analysisResult.detectedItems || [],
+            imageUrl: result.uploadedImageUrl || null,
+            detectedItems: result.analysisResult?.detectedItems || [],
             analyzedAt: new Date().toISOString(),
           });
         }
