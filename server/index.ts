@@ -1,6 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import MemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -13,17 +13,21 @@ declare module "express-session" {
 
 const app = express();
 
-// Session middleware
-const MemoryStoreSession = MemoryStore(session);
+// Session middleware — stored in PostgreSQL so sessions survive server restarts
+const PgSession = connectPgSimple(session);
 app.use(session({
   secret: process.env.SESSION_SECRET || "wv-dev-secret-change-in-production",
   resave: false,
   saveUninitialized: false,
-  store: new MemoryStoreSession({ checkPeriod: 86400000 }),
+  store: new PgSession({
+    conString: process.env.DATABASE_URL,
+    tableName: "sessions",
+    createTableIfMissing: true,
+  }),
   cookie: {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     sameSite: "strict",
   },
 }));
