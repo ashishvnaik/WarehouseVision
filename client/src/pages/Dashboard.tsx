@@ -26,19 +26,23 @@ interface Stats {
 export default function Dashboard() {
   const { data: alerts = [] } = useQuery<AlertWithItem[]>({
     queryKey: ['/api/alerts'],
+    staleTime: 0,
   });
 
   const { data: stats } = useQuery<Stats>({
     queryKey: ['/api/stats'],
+    staleTime: 0,
   });
 
   // Use lightweight summary endpoint to avoid loading large base64 images
   const { data: analysisResults = [] } = useQuery<Omit<AnalysisResult, 'imageUrl'>[]>({
     queryKey: ['/api/analysis/summary'],
+    staleTime: 0,
   });
 
   const { data: inventoryItems = [] } = useQuery<InventoryItem[]>({
     queryKey: ['/api/inventory'],
+    staleTime: 0,
   });
 
   const dismissAlertMutation = useMutation({

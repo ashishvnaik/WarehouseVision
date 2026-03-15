@@ -72,6 +72,7 @@ export default function Upload() {
     const response = await fetch('/api/analyze', {
       method: 'POST',
       body: formData,
+      credentials: 'include',
     });
 
     if (!response.ok) {

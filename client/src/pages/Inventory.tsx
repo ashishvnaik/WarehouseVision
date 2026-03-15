@@ -46,6 +46,7 @@ export default function Inventory() {
 
   const { data: items = [], isLoading } = useQuery<ItemWithHistory[]>({
     queryKey: ['/api/inventory-with-history'],
+    staleTime: 0,
   });
 
   const deleteItemMutation = useMutation({
