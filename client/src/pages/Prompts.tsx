@@ -1,18 +1,28 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus, Edit, Trash2, Star, StarOff } from "lucide-react";
+
+interface ModelConfig {
+  id: string;
+  name: string;
+  type: 'llm' | 'cnn';
+  provider: string;
+  description: string;
+}
 
 interface Prompt {
   id: string;
@@ -36,11 +46,47 @@ type PromptFormValues = z.infer<typeof promptFormSchema>;
 export default function Prompts() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPrompt, setEditingPrompt] = useState<Prompt | null>(null);
+  const [selectedModel, setSelectedModel] = useState('');
   const { toast } = useToast();
 
   const { data: prompts = [], isLoading } = useQuery<Prompt[]>({
     queryKey: ['/api/prompts'],
   });
+
+  const { data: models = [] } = useQuery<ModelConfig[]>({
+    queryKey: ['/api/models'],
+  });
+
+  const { data: settings = {} } = useQuery<Record<string, string>>({
+    queryKey: ['/api/settings'],
+  });
+
+  useEffect(() => {
+    if (settings.defaultModel && !selectedModel) {
+      setSelectedModel(settings.defaultModel);
+    } else if (models.length > 0 && !selectedModel) {
+      setSelectedModel(models[0].id);
+    }
+  }, [settings, models, selectedModel]);
+
+  const saveModelMutation = useMutation({
+    mutationFn: async (modelId: string) => {
+      return apiRequest('POST', '/api/settings', { key: 'defaultModel', value: modelId });
+    },
+    onSuccess: (_, modelId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/settings'] });
+      const model = models.find(m => m.id === modelId);
+      toast({ title: "Default model updated", description: `Operators will now use ${model?.name}.` });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to save model setting.", variant: "destructive" });
+    },
+  });
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    saveModelMutation.mutate(modelId);
+  };
 
   const form = useForm<PromptFormValues>({
     resolver: zodResolver(promptFormSchema),
@@ -187,8 +233,8 @@ export default function Prompts() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight mb-1">AI Prompts</h1>
-          <p className="text-muted-foreground">Manage and version your object detection prompts</p>
+          <h1 className="text-3xl font-semibold tracking-tight mb-1">AI Configuration</h1>
+          <p className="text-muted-foreground">Set the default model and manage prompt versions for inventory analysis</p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -293,6 +339,35 @@ export default function Prompts() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Card className="max-w-xl">
+        <CardHeader>
+          <CardTitle>Default Model</CardTitle>
+          <CardDescription>The AI model operators will use when analyzing warehouse images</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="default-model-select">Detection Model</Label>
+            <Select value={selectedModel} onValueChange={handleModelChange}>
+              <SelectTrigger id="default-model-select" data-testid="select-default-model">
+                <SelectValue placeholder="Select a model..." />
+              </SelectTrigger>
+              <SelectContent>
+                {models.map((model) => (
+                  <SelectItem key={model.id} value={model.id} data-testid={`option-model-${model.id}`}>
+                    <div>
+                      <div className="font-medium">{model.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {model.type.toUpperCase()} · {model.description}
+                      </div>
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4">
         {prompts.map((prompt) => (

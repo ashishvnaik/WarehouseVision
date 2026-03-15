@@ -1,14 +1,13 @@
 import { UploadZone } from "@/components/UploadZone";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Play, CheckCircle, AlertCircle, Calendar, Trash2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Progress } from "@/components/ui/progress";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
@@ -32,26 +31,6 @@ function saveUploadToSession(entry: {
   }
 }
 
-interface Prompt {
-  id: string;
-  version: string;
-  name: string;
-  content: string;
-  description: string | null;
-  isDefault: number;
-  createdAt: string;
-}
-
-interface ModelConfig {
-  id: string;
-  name: string;
-  type: 'llm' | 'cnn';
-  provider: string;
-  description: string;
-  requiresApiKey: boolean;
-  apiKeyEnvVar?: string;
-}
-
 export default function Upload() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [progress, setProgress] = useState(0);
@@ -59,8 +38,6 @@ export default function Upload() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [analysisResults, setAnalysisResults] = useState<any[]>([]);
-  const [selectedPromptId, setSelectedPromptId] = useState<string>("");
-  const [selectedModelId, setSelectedModelId] = useState<string>("");
   const [photoDate, setPhotoDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const { toast } = useToast();
 
@@ -79,46 +56,9 @@ export default function Upload() {
     },
   });
 
-  const { data: prompts = [] } = useQuery<Prompt[]>({
-    queryKey: ['/api/prompts'],
-  });
-
-  const { data: models = [] } = useQuery<ModelConfig[]>({
-    queryKey: ['/api/models'],
-  });
-
-  const { data: settings = {} } = useQuery<Record<string, string>>({
-    queryKey: ['/api/settings'],
-  });
-
-  // Automatically select the default prompt when prompts load (only if user hasn't selected one)
-  useEffect(() => {
-    if (prompts.length > 0 && !selectedPromptId) {
-      const defaultPrompt = prompts.find(p => p.isDefault === 1);
-      if (defaultPrompt) {
-        setSelectedPromptId(defaultPrompt.id);
-      }
-    }
-  }, [prompts, selectedPromptId]);
-
-  // Automatically select the default model from settings
-  useEffect(() => {
-    if (settings.defaultModel && !selectedModelId) {
-      setSelectedModelId(settings.defaultModel);
-    } else if (models.length > 0 && !selectedModelId) {
-      setSelectedModelId(models[0].id);
-    }
-  }, [models, settings, selectedModelId]);
-
-  const analyzeFile = async (file: File, promptId?: string, modelId?: string, photoDate?: string) => {
+  const analyzeFile = async (file: File, photoDate?: string) => {
     const formData = new FormData();
     formData.append('image', file);
-    if (promptId) {
-      formData.append('promptId', promptId);
-    }
-    if (modelId) {
-      formData.append('modelId', modelId);
-    }
     if (photoDate) {
       formData.append('photoDate', photoDate);
     }
@@ -168,8 +108,6 @@ export default function Upload() {
       try {
         const result = await analyzeFile(
           selectedFiles[i],
-          selectedPromptId || undefined,
-          selectedModelId || undefined,
           photoDate || undefined
         );
         results.push({ ...result, fileName: selectedFiles[i].name, success: true });
@@ -229,72 +167,6 @@ export default function Upload() {
       </div>
 
       <div className="max-w-3xl space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Prompt Selection</CardTitle>
-            <CardDescription>Choose which AI prompt version to use for analysis</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label htmlFor="prompt-select">AI Prompt Version</Label>
-              <Select value={selectedPromptId} onValueChange={setSelectedPromptId}>
-                <SelectTrigger id="prompt-select" data-testid="select-prompt">
-                  <SelectValue placeholder="Select a prompt version" />
-                </SelectTrigger>
-                <SelectContent>
-                  {prompts.map((prompt) => (
-                    <SelectItem key={prompt.id} value={prompt.id}>
-                      {prompt.version} - {prompt.name}
-                      {prompt.isDefault === 1 && " (Default)"}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedPromptId && prompts.find(p => p.id === selectedPromptId)?.description && (
-                <p className="text-sm text-muted-foreground">
-                  {prompts.find(p => p.id === selectedPromptId)?.description}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Model Selection</CardTitle>
-            <CardDescription>Choose which ML model to use for detection</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <Label htmlFor="model-select">Detection Model</Label>
-              <Select value={selectedModelId} onValueChange={setSelectedModelId}>
-                <SelectTrigger id="model-select" data-testid="select-model-upload">
-                  <SelectValue placeholder="Select a model" />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((model) => (
-                    <SelectItem key={model.id} value={model.id} data-testid={`option-model-upload-${model.id}`}>
-                      <div>
-                        <div className="font-medium">{model.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {model.type.toUpperCase()} • {model.description}
-                        </div>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {selectedModelId && (
-                <p className="text-sm text-muted-foreground">
-                  {models.find(m => m.id === selectedModelId)?.type === 'llm' 
-                    ? 'Using large language model with vision for detailed product identification'
-                    : 'Using convolutional neural network for fast, real-time object detection'}
-                </p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <CardTitle>Photo Date</CardTitle>

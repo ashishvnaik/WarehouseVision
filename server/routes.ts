@@ -800,7 +800,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ─── Settings Routes ──────────────────────────────────────────────────────
 
-  app.get("/api/settings", requireSuperUser, async (req, res) => {
+  app.get("/api/settings", requireProgrammerPlus, async (req, res) => {
     try {
       const settings = await storage.getAllSettings();
       
@@ -820,7 +820,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/settings/:key", requireSuperUser, async (req, res) => {
+  app.get("/api/settings/:key", requireProgrammerPlus, async (req, res) => {
     try {
       const setting = await storage.getSetting(req.params.key);
       if (!setting) {
@@ -833,7 +833,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/settings", requireSuperUser, async (req, res) => {
+  app.post("/api/settings", requireProgrammerPlus, async (req, res) => {
     try {
       const { key, value } = req.body;
       if (!key || value === undefined) {

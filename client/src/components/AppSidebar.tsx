@@ -45,7 +45,7 @@ const SUPERVISOR_ITEMS: NavItem[] = [
 ];
 
 const PROGRAMMER_ITEMS: NavItem[] = [
-  { title: "AI Prompts", url: "/prompts", icon: FileText },
+  { title: "AI Configuration", url: "/prompts", icon: FileText },
   { title: "Training Examples", url: "/training-examples", icon: GraduationCap },
   { title: "Evaluation", url: "/evaluation", icon: FlaskConical },
 ];
