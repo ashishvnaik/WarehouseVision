@@ -76,7 +76,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ─── Inventory Routes ─────────────────────────────────────────────────────
 
-  app.get("/api/inventory", requireSupervisorPlus, async (req, res) => {
+  app.get("/api/inventory", requireAnyRole, async (req, res) => {
     try {
       // Exclude images by default for faster loading (88MB+ of image data)
       const includeImages = req.query.includeImages === 'true';
@@ -88,7 +88,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/inventory/:id", requireSupervisorPlus, async (req, res) => {
+  app.get("/api/inventory/:id", requireAnyRole, async (req, res) => {
     try {
       const item = await storage.getInventoryItem(req.params.id);
       if (!item) {
@@ -148,7 +148,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/inventory-with-history", requireSupervisorPlus, async (req, res) => {
+  app.get("/api/inventory-with-history", requireAnyRole, async (req, res) => {
     try {
       const itemsWithHistory = await storage.getInventoryItemsWithHistory();
       res.json(itemsWithHistory);
@@ -172,7 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/inventory/:itemId/counts", requireSupervisorPlus, async (req, res) => {
+  app.get("/api/inventory/:itemId/counts", requireAnyRole, async (req, res) => {
     try {
       const history = await storage.getItemCountHistory(req.params.itemId);
       res.json(history);
@@ -664,7 +664,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ─── Alerts Routes ────────────────────────────────────────────────────────
 
-  app.get("/api/alerts", requireSupervisorPlus, async (req, res) => {
+  app.get("/api/alerts", requireAnyRole, async (req, res) => {
     try {
       const dismissed = req.query.dismissed === 'true' ? true : 
                        req.query.dismissed === 'false' ? false : 
@@ -877,7 +877,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ─── Stats Route ──────────────────────────────────────────────────────────
 
-  app.get("/api/stats", requireSupervisorPlus, async (req, res) => {
+  app.get("/api/stats", requireAnyRole, async (req, res) => {
     try {
       const items = await storage.getInventoryItems();
       const alerts = await storage.getAlerts(false);

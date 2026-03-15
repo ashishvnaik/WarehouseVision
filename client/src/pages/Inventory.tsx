@@ -6,7 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Plus, Search, Package, Trash2, ArrowUp, ArrowDown, Edit, Image as ImageIcon, Info, CheckCircle, ShieldCheck, GitMerge } from "lucide-react";
+import { Plus, Search, Package, Trash2, ArrowUp, ArrowDown, ArrowUpDown, Edit, Image as ImageIcon, Info, CheckCircle, ShieldCheck, GitMerge } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -39,6 +39,8 @@ export default function Inventory() {
   const [mergeSource, setMergeSource] = useState('');
   const [mergeTarget, setMergeTarget] = useState('');
   const [mergeConflict, setMergeConflict] = useState<'source' | 'target' | 'max'>('max');
+  const [sortColumn, setSortColumn] = useState<string>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const { toast } = useToast();
   const { role } = useAuth();
 
@@ -160,14 +162,12 @@ export default function Inventory() {
     updateItemMutation.mutate({ id, updates });
   };
 
-  const filteredItems = items.filter(item =>
-    item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    item.sku.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const allDates = Array.from(new Set(
+  const allDatesUnlimited = Array.from(new Set(
     items.flatMap(item => item.countHistory.map(c => c.photoDate))
   )).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+
+  // Show only the 3 most recent dates
+  const allDates = allDatesUnlimited.slice(-3);
 
   const getCountEntryForDate = (item: ItemWithHistory, photoDate: string): CountWithMethod | null =>
     item.countHistory.find(c => c.photoDate === photoDate) || null;
@@ -176,6 +176,37 @@ export default function Inventory() {
     const e = getCountEntryForDate(item, photoDate);
     return e ? e.absoluteCount : null;
   };
+
+  const handleSort = (col: string) => {
+    if (sortColumn === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(col);
+      setSortDir('asc');
+    }
+  };
+
+  const filteredItems = items
+    .filter(item =>
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.sku.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sortColumn === 'name') {
+        const cmp = a.name.localeCompare(b.name);
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+      const aCount = getCountForDate(a, sortColumn) ?? -1;
+      const bCount = getCountForDate(b, sortColumn) ?? -1;
+      return sortDir === 'asc' ? aCount - bCount : bCount - aCount;
+    });
+
+  function SortIcon({ col }: { col: string }) {
+    if (sortColumn !== col) return <ArrowUpDown className="ml-1 h-3 w-3 opacity-40 inline" />;
+    return sortDir === 'asc'
+      ? <ArrowUp className="ml-1 h-3 w-3 inline" />
+      : <ArrowDown className="ml-1 h-3 w-3 inline" />;
+  }
 
   const handleCountClick = (item: ItemWithHistory, photoDate: string) => {
     const countEntry = getCountEntryForDate(item, photoDate);
@@ -250,10 +281,20 @@ export default function Inventory() {
             <TableHeader>
               <TableRow>
                 <TableHead className="sticky left-0 bg-background z-10 w-14">Image</TableHead>
-                <TableHead className="sticky left-14 bg-background z-10 min-w-[150px]">Item Name</TableHead>
+                <TableHead
+                  className="sticky left-14 bg-background z-10 min-w-[150px] cursor-pointer select-none"
+                  onClick={() => handleSort('name')}
+                >
+                  Item Name <SortIcon col="name" />
+                </TableHead>
                 {allDates.map((date) => (
-                  <TableHead key={date} className="min-w-[150px] text-center">
+                  <TableHead
+                    key={date}
+                    className="min-w-[150px] text-center cursor-pointer select-none"
+                    onClick={() => handleSort(date)}
+                  >
                     {format(parseISO(date), 'MMM d, yyyy')}
+                    <SortIcon col={date} />
                   </TableHead>
                 ))}
                 <TableHead className="w-20">Actions</TableHead>

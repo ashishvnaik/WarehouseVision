@@ -61,18 +61,12 @@ function AppLayout() {
           <TestingModeBanner />
           <main className="flex-1 overflow-auto">
             <Switch>
-              <Route path="/">
-                {role === "supervisor" || role === "superuser"
-                  ? <Dashboard />
-                  : <Redirect to="/upload" />}
-              </Route>
+              <Route path="/" component={Dashboard} />
               <Route path="/upload" component={Upload} />
               <Route path="/my-uploads" component={MyUploads} />
-              <Route path="/live">
-                <ProtectedRoute component={Dashboard} allowedRoles={["supervisor", "superuser"]} />
-              </Route>
+              <Route path="/live" component={Dashboard} />
               <Route path="/inventory">
-                <ProtectedRoute component={Inventory} allowedRoles={["supervisor", "superuser"]} />
+                <ProtectedRoute component={Inventory} allowedRoles={["operator", "supervisor", "programmer", "superuser"]} />
               </Route>
               <Route path="/reports">
                 <ProtectedRoute component={Reports} allowedRoles={["supervisor", "superuser"]} />

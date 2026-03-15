@@ -34,6 +34,8 @@ import { useAuth, type Role } from "@/contexts/AuthContext";
 type NavItem = { title: string; url: string; icon: React.ComponentType<{ className?: string }> };
 
 const OPERATOR_ITEMS: NavItem[] = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Upload", url: "/upload", icon: Upload },
   { title: "My Uploads", url: "/my-uploads", icon: Images },
 ];
@@ -43,9 +45,13 @@ const SUPERVISOR_ITEMS: NavItem[] = [
   { title: "Inventory", url: "/inventory", icon: Package },
   { title: "Reports", url: "/reports", icon: BarChart3 },
   { title: "Alerts", url: "/alerts", icon: Bell },
+  { title: "Upload", url: "/upload", icon: Upload },
+  { title: "My Uploads", url: "/my-uploads", icon: Images },
 ];
 
 const PROGRAMMER_ITEMS: NavItem[] = [
+  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Inventory", url: "/inventory", icon: Package },
   { title: "AI Configuration", url: "/prompts", icon: FileText },
   { title: "Training Examples", url: "/training-examples", icon: GraduationCap },
   { title: "Evaluation", url: "/evaluation", icon: FlaskConical },
@@ -56,15 +62,22 @@ const SETTINGS_ITEMS: NavItem[] = [
 ];
 
 function getNavItems(role: Role | null): NavItem[] {
-  if (role === null || role === "operator") return OPERATOR_ITEMS;
+  if (role === null) return [];
+  if (role === "operator") return OPERATOR_ITEMS;
   if (role === "supervisor") return SUPERVISOR_ITEMS;
   if (role === "programmer") return PROGRAMMER_ITEMS;
   if (role === "superuser") return [
-    ...SUPERVISOR_ITEMS,
-    ...OPERATOR_ITEMS,
-    ...PROGRAMMER_ITEMS,
+    { title: "Dashboard", url: "/", icon: LayoutDashboard },
+    { title: "Inventory", url: "/inventory", icon: Package },
+    { title: "Reports", url: "/reports", icon: BarChart3 },
+    { title: "Alerts", url: "/alerts", icon: Bell },
+    { title: "Upload", url: "/upload", icon: Upload },
+    { title: "My Uploads", url: "/my-uploads", icon: Images },
+    { title: "AI Configuration", url: "/prompts", icon: FileText },
+    { title: "Training Examples", url: "/training-examples", icon: GraduationCap },
+    { title: "Evaluation", url: "/evaluation", icon: FlaskConical },
   ];
-  return OPERATOR_ITEMS;
+  return [];
 }
 
 const ROLE_LABELS: Record<Role, string> = {
