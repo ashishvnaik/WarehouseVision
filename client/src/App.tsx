@@ -36,15 +36,13 @@ function AppLayout() {
   const { role, isLoading } = useAuth();
   const [location] = useLocation();
 
-  if (location === "/login") {
-    return (
-      <Switch>
-        <Route path="/login" component={Login} />
-      </Switch>
-    );
-  }
-
   if (isLoading) return null;
+
+  // Redirect legacy /login to /
+  if (location === "/login") return <Redirect to="/" />;
+
+  // Not authenticated — role selection page (full screen, no sidebar)
+  if (!role) return <Login />;
 
   const style = {
     "--sidebar-width": "16rem",
@@ -64,7 +62,7 @@ function AppLayout() {
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/">
-                {role && (role === "supervisor" || role === "superuser")
+                {role === "supervisor" || role === "superuser"
                   ? <Dashboard />
                   : <Redirect to="/upload" />}
               </Route>

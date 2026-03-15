@@ -1,28 +1,52 @@
 import { useState } from "react";
-import { Camera, Eye, EyeOff } from "lucide-react";
+import { Camera, Eye, EyeOff, ArrowLeft, Zap, BarChart3, Code2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth, type Role } from "@/contexts/AuthContext";
+import { useLocation } from "wouter";
 
-const ROLES: { value: Role; label: string; description: string }[] = [
-  { value: "operator",   label: "Operator",   description: "Upload warehouse images" },
-  { value: "supervisor", label: "Supervisor",  description: "Manage inventory & accuracy" },
-  { value: "programmer", label: "Programmer",  description: "Improve AI inference" },
-  { value: "superuser",  label: "SuperUser",   description: "Full access" },
+const ROLES: {
+  value: Role;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  passwordRequired: boolean;
+}[] = [
+  { value: "operator",   label: "Operator",   description: "Upload and analyze warehouse images", icon: Zap,         passwordRequired: true },
+  { value: "supervisor", label: "Supervisor",  description: "Manage inventory and review results",  icon: BarChart3,   passwordRequired: true },
+  { value: "programmer", label: "Programmer",  description: "Configure AI models and prompts",      icon: Code2,       passwordRequired: true },
+  { value: "superuser",  label: "SuperUser",   description: "Full system access",                   icon: ShieldCheck, passwordRequired: true },
 ];
 
 export default function Login() {
   const { login } = useAuth();
-  const [selectedRole, setSelectedRole] = useState<Role>("operator");
+  const [, setLocation] = useLocation();
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleRoleClick = (role: (typeof ROLES)[number]) => {
+    if (!role.passwordRequired) {
+      setLocation("/upload");
+      return;
+    }
+    setSelectedRole(role.value);
+    setPassword("");
+    setError("");
+  };
+
+  const handleBack = () => {
+    setSelectedRole(null);
+    setPassword("");
+    setError("");
+  };
+
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedRole) return;
     setError("");
     setIsLoading(true);
     try {
@@ -34,47 +58,75 @@ export default function Login() {
     }
   };
 
+  const activeRoleMeta = ROLES.find((r) => r.value === selectedRole);
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-sm space-y-6">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
+      <div className="w-full max-w-md space-y-8">
+        {/* Logo */}
         <div className="flex flex-col items-center gap-3">
           <div className="p-3 rounded-xl bg-primary">
             <Camera className="h-8 w-8 text-primary-foreground" />
           </div>
           <div className="text-center">
-            <h1 className="text-2xl font-semibold">WarehouseVision</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">WarehouseVision</h1>
             <p className="text-sm text-muted-foreground">AI Inventory Management</p>
           </div>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Sign in</CardTitle>
-            <CardDescription>Select your role and enter your password.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>Role</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  {ROLES.map((r) => (
-                    <button
-                      key={r.value}
-                      type="button"
-                      onClick={() => setSelectedRole(r.value)}
-                      className={`p-3 rounded-lg border text-left transition-colors ${
-                        selectedRole === r.value
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border hover:border-muted-foreground"
-                      }`}
-                    >
-                      <div className="font-medium text-sm">{r.label}</div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{r.description}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+        {/* Role selection */}
+        {!selectedRole && (
+          <div className="space-y-4">
+            <p className="text-center text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Select your role
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {ROLES.map((r) => {
+                const Icon = r.icon;
+                return (
+                  <button
+                    key={r.value}
+                    type="button"
+                    onClick={() => handleRoleClick(r)}
+                    className="flex flex-col items-start gap-3 p-4 rounded-xl border border-border bg-card hover:border-primary hover:bg-primary/5 transition-colors text-left group"
+                  >
+                    <div className="p-2 rounded-lg bg-muted group-hover:bg-primary/10 transition-colors">
+                      <Icon className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm">{r.label}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{r.description}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
+        {/* Password step */}
+        {selectedRole && activeRoleMeta && (
+          <div className="space-y-5">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+
+            <div className="flex items-center gap-3 p-4 rounded-xl border border-primary bg-primary/5">
+              <div className="p-2 rounded-lg bg-primary/10">
+                <activeRoleMeta.icon className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <div className="font-semibold text-sm">{activeRoleMeta.label}</div>
+                <div className="text-xs text-muted-foreground">{activeRoleMeta.description}</div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSignIn} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <div className="relative">
@@ -85,6 +137,7 @@ export default function Login() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter password"
                     className="pr-10"
+                    autoFocus
                     required
                   />
                   <button
@@ -97,16 +150,14 @@ export default function Login() {
                 </div>
               </div>
 
-              {error && (
-                <p className="text-sm text-destructive">{error}</p>
-              )}
+              {error && <p className="text-sm text-destructive">{error}</p>}
 
               <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? "Signing in..." : "Sign in"}
+                {isLoading ? "Signing in…" : "Sign in"}
               </Button>
             </form>
-          </CardContent>
-        </Card>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -182,7 +182,7 @@ export function AppSidebar() {
             asChild
             data-testid="button-login"
           >
-            <Link href="/login">
+            <Link href="/">
               <LogIn className="h-4 w-4" />
               Sign in
             </Link>

@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
     // Clear session upload history
     sessionStorage.removeItem("wv_session_uploads");
-    setLocation("/upload");
+    setLocation("/");
   };
 
   const setTestingMode = async (enabled: boolean) => {
