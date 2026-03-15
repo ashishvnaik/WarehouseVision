@@ -26,6 +26,7 @@ import {
   FlaskConical,
   Images,
   LogOut,
+  LogIn,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useAuth, type Role } from "@/contexts/AuthContext";
@@ -55,7 +56,7 @@ const SETTINGS_ITEMS: NavItem[] = [
 ];
 
 function getNavItems(role: Role | null): NavItem[] {
-  if (role === "operator") return OPERATOR_ITEMS;
+  if (role === null || role === "operator") return OPERATOR_ITEMS;
   if (role === "supervisor") return SUPERVISOR_ITEMS;
   if (role === "programmer") return PROGRAMMER_ITEMS;
   if (role === "superuser") return [
@@ -63,7 +64,7 @@ function getNavItems(role: Role | null): NavItem[] {
     ...OPERATOR_ITEMS,
     ...PROGRAMMER_ITEMS,
   ];
-  return [];
+  return OPERATOR_ITEMS;
 }
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -164,15 +165,29 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="p-4">
-        <Button
-          variant="ghost"
-          className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
-          onClick={logout}
-          data-testid="button-logout"
-        >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </Button>
+        {role ? (
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+            onClick={logout}
+            data-testid="button-logout"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+            asChild
+            data-testid="button-login"
+          >
+            <Link href="/login">
+              <LogIn className="h-4 w-4" />
+              Sign in
+            </Link>
+          </Button>
+        )}
       </SidebarFooter>
     </Sidebar>
   );

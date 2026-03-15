@@ -246,7 +246,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/analysis/:id", requireAuth(["operator", "supervisor", "superuser"]), async (req, res) => {
+  app.delete("/api/analysis/:id", async (req, res) => {
     try {
       const deleted = await storage.deleteAnalysisResult(req.params.id);
       if (!deleted) return res.status(404).json({ error: "Analysis result not found" });
@@ -257,7 +257,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/analysis/:id", requireAnyRole, async (req, res) => {
+  app.get("/api/analysis/:id", async (req, res) => {
     try {
       const result = await storage.getAnalysisResultById(req.params.id);
       if (!result) {
@@ -270,7 +270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/analyze", requireAnyRole, upload.single("image"), async (req, res) => {
+  app.post("/api/analyze", upload.single("image"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No image provided" });
@@ -722,7 +722,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/prompts/default", requireAnyRole, async (req, res) => {
+  app.get("/api/prompts/default", async (req, res) => {
     try {
       const prompt = await storage.getDefaultPrompt();
       if (!prompt) {
@@ -863,7 +863,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ─── Models Route ─────────────────────────────────────────────────────────
 
-  app.get("/api/models", requireAnyRole, async (req, res) => {
+  app.get("/api/models", async (req, res) => {
     try {
       res.json(AVAILABLE_MODELS);
     } catch (error) {

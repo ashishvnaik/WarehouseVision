@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -46,17 +46,6 @@ function AppLayout() {
 
   if (isLoading) return null;
 
-  if (!role) {
-    return (
-      <Switch>
-        <Route path="/login" component={Login} />
-        <Route>
-          <Login />
-        </Route>
-      </Switch>
-    );
-  }
-
   const style = {
     "--sidebar-width": "16rem",
     "--sidebar-width-icon": "3rem",
@@ -75,14 +64,12 @@ function AppLayout() {
           <main className="flex-1 overflow-auto">
             <Switch>
               <Route path="/">
-                <ProtectedRoute component={Dashboard} allowedRoles={["supervisor", "superuser"]} />
+                {role && (role === "supervisor" || role === "superuser")
+                  ? <Dashboard />
+                  : <Redirect to="/upload" />}
               </Route>
-              <Route path="/upload">
-                <ProtectedRoute component={Upload} allowedRoles={["operator", "superuser"]} />
-              </Route>
-              <Route path="/my-uploads">
-                <ProtectedRoute component={MyUploads} allowedRoles={["operator", "superuser"]} />
-              </Route>
+              <Route path="/upload" component={Upload} />
+              <Route path="/my-uploads" component={MyUploads} />
               <Route path="/live">
                 <ProtectedRoute component={Dashboard} allowedRoles={["supervisor", "superuser"]} />
               </Route>
