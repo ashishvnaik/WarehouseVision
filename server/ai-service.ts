@@ -2,10 +2,14 @@ import OpenAI from "openai";
 
 // This is using Replit's AI Integrations service, which provides OpenAI-compatible API access without requiring your own OpenAI API key.
 // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
-});
+// Created lazily so the server can start without this provider's key.
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  return openaiClient ??= new OpenAI({
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+  });
+}
 
 export interface DetectedItem {
   itemType: string;
@@ -99,7 +103,7 @@ Be thorough, specific, and accurate. Read all visible text and branding.`;
   const prompt = basePrompt + userInstructionsText;
 
   try {
-    const response = await openai.chat.completions.create({
+    const response = await getOpenAI().chat.completions.create({
       model: "gpt-4o", // Using gpt-4o for vision capabilities
       messages: [
         {

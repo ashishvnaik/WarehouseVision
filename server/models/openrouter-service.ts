@@ -1,10 +1,14 @@
 import OpenAI from 'openai';
 import type { AnalysisResponse } from './config';
 
-const openrouter = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
-  apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
-});
+// Created lazily so the server can start without this provider's key.
+let openrouterClient: OpenAI | null = null;
+function getOpenRouter(): OpenAI {
+  return openrouterClient ??= new OpenAI({
+    baseURL: process.env.AI_INTEGRATIONS_OPENROUTER_BASE_URL || 'https://openrouter.ai/api/v1',
+    apiKey: process.env.AI_INTEGRATIONS_OPENROUTER_API_KEY || process.env.OPENROUTER_API_KEY,
+  });
+}
 
 export interface UserInstruction {
   itemName: string;
@@ -111,7 +115,7 @@ Be thorough, specific, and accurate. Read all visible text and branding.`;
     const openrouterModelId = MODEL_ID_MAP[modelId] || modelId;
 
     try {
-      const response = await openrouter.chat.completions.create({
+      const response = await getOpenRouter().chat.completions.create({
         model: openrouterModelId,
         messages: [{
           role: "user",
