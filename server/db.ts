@@ -1,5 +1,7 @@
-import { Pool, neonConfig } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-serverless';
+import { Pool as NeonPool, neonConfig } from '@neondatabase/serverless';
+import { drizzle as drizzleNeon } from 'drizzle-orm/neon-serverless';
+import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
+import pg from 'pg';
 import ws from "ws";
 import * as schema from "@shared/schema";
 
@@ -11,12 +13,22 @@ if (!process.env.DATABASE_URL) {
   );
 }
 
+let dbHost = '';
 try {
-  const dbUrl = new URL(process.env.DATABASE_URL);
-  console.log(`[db] Connecting to host: ${dbUrl.hostname}`);
+  dbHost = new URL(process.env.DATABASE_URL).hostname;
+  console.log(`[db] Connecting to host: ${dbHost}`);
 } catch {
   console.error('[db] DATABASE_URL is not a valid URL:', process.env.DATABASE_URL);
 }
 
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle({ client: pool, schema });
+// Neon's serverless driver speaks WebSockets and only works against Neon.
+// Use node-postgres for any other Postgres (local dev, Railway, etc.).
+const isNeon = dbHost.endsWith('.neon.tech');
+
+export const pool = isNeon
+  ? new NeonPool({ connectionString: process.env.DATABASE_URL })
+  : new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+export const db = isNeon
+  ? drizzleNeon({ client: pool as NeonPool, schema })
+  : drizzlePg({ client: pool as pg.Pool, schema });

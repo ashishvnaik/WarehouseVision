@@ -1,10 +1,14 @@
 import OpenAI from "openai";
 import type { AnalysisResponse } from './config';
 
-const openai = new OpenAI({
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-});
+// Created lazily so the server can start without this provider's key.
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  return openaiClient ??= new OpenAI({
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+  });
+}
 
 export interface UserInstruction {
   itemName: string;
@@ -104,7 +108,7 @@ Be thorough, specific, and accurate. Read all visible text and branding.`;
     const prompt = basePrompt + userInstructionsText;
 
     try {
-      const response = await openai.chat.completions.create({
+      const response = await getOpenAI().chat.completions.create({
         model: "gpt-4o",
         messages: [
           {

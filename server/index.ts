@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
+import { pool } from "./db";
 
 import { setupVite, serveStatic, log } from "./vite";
 
@@ -13,6 +14,11 @@ declare module "express-session" {
 }
 
 const app = express();
+
+// Surface missing configuration in the deploy logs instead of failing silently at login.
+for (const key of ["ROLE_OPERATOR_PASSWORD", "ROLE_SUPERVISOR_PASSWORD", "ROLE_PROGRAMMER_PASSWORD", "ROLE_SUPERUSER_PASSWORD", "SESSION_SECRET"]) {
+  if (!process.env[key]?.trim()) console.warn(`[config] ${key} is not set`);
+}
 
 // Trust Railway's (and similar) reverse proxy so req.secure reflects HTTPS
 // and secure session cookies are actually set on the client.
@@ -27,7 +33,9 @@ app.use(session({
   store: new PgSession({
     conString: process.env.DATABASE_URL,
     tableName: "sessions",
-    createTableIfMissing: true,
+    // Created at startup by ensureSessionsTable(): connect-pg-simple's lazy creation
+    // caches its first failure, which would break every login until a restart.
+    createTableIfMissing: false,
   }),
   cookie: {
     httpOnly: true,
@@ -80,7 +88,26 @@ app.use((req, res, next) => {
   next();
 });
 
+async function ensureSessionsTable() {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await pool.query(`CREATE TABLE IF NOT EXISTS "sessions" (
+        "sid" varchar NOT NULL COLLATE "default" PRIMARY KEY,
+        "sess" json NOT NULL,
+        "expire" timestamp(6) NOT NULL
+      )`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "sessions" ("expire")`);
+      return;
+    } catch (err) {
+      if (attempt >= 5) throw err;
+      console.warn(`[db] Could not ensure sessions table (attempt ${attempt}/5), retrying:`, err instanceof Error ? err.message : err);
+      await new Promise((resolve) => setTimeout(resolve, 2000 * attempt));
+    }
+  }
+}
+
 (async () => {
+  await ensureSessionsTable();
   const server = await registerRoutes(app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

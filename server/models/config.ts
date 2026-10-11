@@ -30,17 +30,17 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
     apiKeyEnvVar: 'AI_INTEGRATIONS_OPENAI_API_KEY'
   },
   {
-    id: 'claude-sonnet-4-20250514',
-    name: 'Claude Sonnet 4 (Anthropic)',
+    id: 'claude-sonnet-5-5',
+    name: 'Claude Sonnet 5.5 (Anthropic)',
     type: 'llm',
     provider: 'anthropic',
-    description: 'Anthropic Claude with vision capabilities - latest model, balanced performance',
+    description: 'Anthropic Claude Sonnet with vision - fast, balanced performance',
     requiresApiKey: true,
     apiKeyEnvVar: 'ANTHROPIC_API_KEY'
   },
   {
-    id: 'claude-opus-4-5',
-    name: 'Claude Opus 4.5 (Anthropic)',
+    id: 'claude-opus-5-5',
+    name: 'Claude Opus 5.5 (Anthropic)',
     type: 'llm',
     provider: 'anthropic',
     description: 'Anthropic Claude Opus - most capable model for complex reasoning',
@@ -125,8 +125,15 @@ export interface AnalysisResponse {
   modelName: string;
 }
 
+// Retired model IDs that may still be saved in settings, mapped to their replacements.
+const RETIRED_MODEL_IDS: Record<string, string> = {
+  'claude-sonnet-4-20250514': 'claude-sonnet-5-5',
+  'claude-opus-4-5': 'claude-opus-5-5',
+};
+
 export function getModelById(id: string): ModelConfig | undefined {
-  return AVAILABLE_MODELS.find(m => m.id === id);
+  const resolved = RETIRED_MODEL_IDS[id] ?? id;
+  return AVAILABLE_MODELS.find(m => m.id === resolved);
 }
 
 export function getModelsByType(type: ModelType): ModelConfig[] {
@@ -135,4 +142,25 @@ export function getModelsByType(type: ModelType): ModelConfig[] {
 
 export function getDefaultModel(): ModelConfig {
   return AVAILABLE_MODELS[0];
+}
+
+// Env vars that can hold each provider's key (Replit integration names first, then standard names).
+const PROVIDER_KEY_VARS: Record<string, string[]> = {
+  openai: ['AI_INTEGRATIONS_OPENAI_API_KEY', 'OPENAI_API_KEY'],
+  anthropic: ['ANTHROPIC_API_KEY'],
+  gemini: ['AI_INTEGRATIONS_GEMINI_API_KEY', 'GEMINI_API_KEY'],
+  openrouter: ['AI_INTEGRATIONS_OPENROUTER_API_KEY', 'OPENROUTER_API_KEY'],
+  roboflow: ['ROBOFLOW_API_KEY'],
+};
+
+export function providerKeyVars(provider: string): string[] {
+  return PROVIDER_KEY_VARS[provider] ?? [];
+}
+
+export function isModelConfigured(model: ModelConfig): boolean {
+  return providerKeyVars(model.provider).some(v => process.env[v]?.trim());
+}
+
+export function getFirstConfiguredModel(): ModelConfig | undefined {
+  return AVAILABLE_MODELS.find(isModelConfigured);
 }
