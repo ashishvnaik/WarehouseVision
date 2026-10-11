@@ -30,17 +30,17 @@ export const AVAILABLE_MODELS: ModelConfig[] = [
     apiKeyEnvVar: 'AI_INTEGRATIONS_OPENAI_API_KEY'
   },
   {
-    id: 'claude-sonnet-4-20250514',
-    name: 'Claude Sonnet 4 (Anthropic)',
+    id: 'claude-sonnet-5-5',
+    name: 'Claude Sonnet 5.5 (Anthropic)',
     type: 'llm',
     provider: 'anthropic',
-    description: 'Anthropic Claude with vision capabilities - latest model, balanced performance',
+    description: 'Anthropic Claude Sonnet with vision - fast, balanced performance',
     requiresApiKey: true,
     apiKeyEnvVar: 'ANTHROPIC_API_KEY'
   },
   {
-    id: 'claude-opus-4-5',
-    name: 'Claude Opus 4.5 (Anthropic)',
+    id: 'claude-opus-5-5',
+    name: 'Claude Opus 5.5 (Anthropic)',
     type: 'llm',
     provider: 'anthropic',
     description: 'Anthropic Claude Opus - most capable model for complex reasoning',
@@ -125,8 +125,15 @@ export interface AnalysisResponse {
   modelName: string;
 }
 
+// Retired model IDs that may still be saved in settings, mapped to their replacements.
+const RETIRED_MODEL_IDS: Record<string, string> = {
+  'claude-sonnet-4-20250514': 'claude-sonnet-5-5',
+  'claude-opus-4-5': 'claude-opus-5-5',
+};
+
 export function getModelById(id: string): ModelConfig | undefined {
-  return AVAILABLE_MODELS.find(m => m.id === id);
+  const resolved = RETIRED_MODEL_IDS[id] ?? id;
+  return AVAILABLE_MODELS.find(m => m.id === resolved);
 }
 
 export function getModelsByType(type: ModelType): ModelConfig[] {

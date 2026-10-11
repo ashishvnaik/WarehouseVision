@@ -106,7 +106,8 @@ Be thorough, specific, and accurate. Read all visible text and branding.`;
     try {
       const response = await anthropic.messages.create({
         model: modelName,
-        max_tokens: 4096,
+        // Current Claude models think before answering; leave room for that plus the JSON.
+        max_tokens: 16000,
         messages: [{
           role: "user",
           content: [
@@ -126,11 +127,18 @@ Be thorough, specific, and accurate. Read all visible text and branding.`;
         }]
       });
 
-      const contentBlock = response.content[0];
-      if (contentBlock.type !== 'text') {
+      if (response.stop_reason === 'refusal') {
+        throw new Error("Claude declined to analyze this image");
+      }
+      if (response.stop_reason === 'max_tokens') {
+        throw new Error("Claude's response was cut off (max_tokens reached)");
+      }
+      // The response may start with a thinking block; the JSON is in the text block.
+      const textBlock = response.content.find(block => block.type === 'text');
+      if (!textBlock || textBlock.type !== 'text') {
         throw new Error("No text response from Claude");
       }
-      let content = contentBlock.text;
+      let content = textBlock.text;
 
       // Strip markdown code blocks if present (Claude sometimes wraps JSON in ```json ... ```)
       content = content.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();

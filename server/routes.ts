@@ -353,6 +353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             : 'No AI provider API key is configured on the server.',
         });
       }
+      selectedModel = selectedConfig.id; // resolves retired model IDs saved in settings
 
       // Compute hash of the image to detect duplicates
       const imageHash = createHash('sha256').update(req.file.buffer).digest('hex');
