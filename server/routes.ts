@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import multer from "multer";
-import { modelService, AVAILABLE_MODELS, type UserInstruction } from "./models";
+import { modelService, AVAILABLE_MODELS, getModelById, getFirstConfiguredModel, isModelConfigured, providerKeyVars, type UserInstruction } from "./models";
 import { insertInventoryItemSchema, insertAlertSchema, insertPromptSchema, insertTrainingExampleSchema } from "@shared/schema";
 import { createHash } from "crypto";
 
@@ -341,7 +341,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let selectedModel = modelId;
       if (!selectedModel) {
         const modelSetting = await storage.getSetting('defaultModel');
-        selectedModel = modelSetting?.value || 'gpt-4o';
+        selectedModel = modelSetting?.value || getFirstConfiguredModel()?.id;
+      }
+      const selectedConfig = selectedModel ? getModelById(selectedModel) : undefined;
+      if (!selectedConfig || !isModelConfigured(selectedConfig)) {
+        const configured = AVAILABLE_MODELS.filter(isModelConfigured).map(m => m.id);
+        const needs = selectedConfig ? ` needs ${providerKeyVars(selectedConfig.provider).join(' or ')}, which is not set` : ' is not available';
+        return res.status(400).json({
+          error: selectedModel
+            ? `Model "${selectedModel}"${needs}. Configured models: ${configured.join(', ') || 'none'}. Pick one in Settings.`
+            : 'No AI provider API key is configured on the server.',
+        });
       }
 
       // Compute hash of the image to detect duplicates
@@ -441,7 +451,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           mimeType
         );
       } catch (aiError: any) {
-        console.error("OpenAI analysis error:", aiError);
+        console.error(`AI analysis error (${selectedModel}):`, aiError);
         
         // Provide more specific error messages based on the error type
         if (aiError.message?.includes('Invalid image')) {
@@ -460,9 +470,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
         }
         
-        // Generic AI error
-        return res.status(500).json({ 
-          error: "AI analysis service is currently unavailable. Please try again later." 
+        // Generic AI error: pass the provider's message through (minus anything key-like)
+        const detail = String(aiError?.message ?? aiError).replace(/\b(sk|key|AIza)[-_A-Za-z0-9*]{6,}/g, '[redacted]').slice(0, 300);
+        return res.status(502).json({
+          error: `AI analysis failed with ${selectedModel}: ${detail}`
         });
       }
 
@@ -888,7 +899,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/models", async (req, res) => {
     try {
-      res.json(AVAILABLE_MODELS);
+      res.json(AVAILABLE_MODELS.map(m => ({ ...m, configured: isModelConfigured(m) })));
     } catch (error) {
       console.error("Error fetching models:", error);
       res.status(500).json({ error: "Failed to fetch models" });
@@ -1115,7 +1126,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let selectedModel = modelId;
       if (!selectedModel) {
         const modelSetting = await storage.getSetting("defaultModel");
-        selectedModel = modelSetting?.value || "gpt-4o";
+        selectedModel = modelSetting?.value || getFirstConfiguredModel()?.id;
       }
 
       const analysisResult = await modelService.analyzeImage(

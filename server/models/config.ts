@@ -136,3 +136,24 @@ export function getModelsByType(type: ModelType): ModelConfig[] {
 export function getDefaultModel(): ModelConfig {
   return AVAILABLE_MODELS[0];
 }
+
+// Env vars that can hold each provider's key (Replit integration names first, then standard names).
+const PROVIDER_KEY_VARS: Record<string, string[]> = {
+  openai: ['AI_INTEGRATIONS_OPENAI_API_KEY', 'OPENAI_API_KEY'],
+  anthropic: ['ANTHROPIC_API_KEY'],
+  gemini: ['AI_INTEGRATIONS_GEMINI_API_KEY', 'GEMINI_API_KEY'],
+  openrouter: ['AI_INTEGRATIONS_OPENROUTER_API_KEY', 'OPENROUTER_API_KEY'],
+  roboflow: ['ROBOFLOW_API_KEY'],
+};
+
+export function providerKeyVars(provider: string): string[] {
+  return PROVIDER_KEY_VARS[provider] ?? [];
+}
+
+export function isModelConfigured(model: ModelConfig): boolean {
+  return providerKeyVars(model.provider).some(v => process.env[v]?.trim());
+}
+
+export function getFirstConfiguredModel(): ModelConfig | undefined {
+  return AVAILABLE_MODELS.find(isModelConfigured);
+}
