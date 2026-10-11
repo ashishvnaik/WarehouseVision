@@ -51,8 +51,12 @@ export default function Login() {
     setIsLoading(true);
     try {
       await login(selectedRole, password);
-    } catch {
-      setError("Incorrect password. Please try again.");
+    } catch (err) {
+      // Only a 401 means a wrong password; surface anything else (misconfiguration, server error).
+      const message = err instanceof Error ? err.message : "";
+      setError(!message || message === "Invalid credentials"
+        ? "Incorrect password. Please try again."
+        : `Sign-in failed: ${message}`);
     } finally {
       setIsLoading(false);
     }

@@ -42,17 +42,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: "Invalid role" });
     }
     const envKey = `ROLE_${role.toUpperCase()}_PASSWORD`;
-    const expected = process.env[envKey];
+    // Trim: stray whitespace or newlines are easy to paste into a hosting dashboard.
+    const expected = process.env[envKey]?.trim();
     if (!expected) {
-      return res.status(500).json({ error: "Role not configured" });
+      console.error(`[auth] Login failed: ${envKey} is not set`);
+      return res.status(500).json({ error: `Role not configured (${envKey} is not set)` });
     }
-    if (password !== expected) {
+    if (password?.trim() !== expected) {
+      console.warn(`[auth] Login failed for role "${role}": wrong password`);
       return res.status(401).json({ error: "Invalid credentials" });
     }
     req.session.role = role as Role;
     req.session.testingMode = false;
     req.session.save((err) => {
-      if (err) return res.status(500).json({ error: "Failed to save session" });
+      if (err) {
+        console.error("[auth] Failed to save session:", err);
+        return res.status(500).json({ error: "Failed to save session" });
+      }
       res.json({ role, testingMode: false });
     });
   });
